@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.dylib
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# SQLite databases (auto-generated)
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.db
+
+# Test artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Build
+dist/
+build/
+*.egg-info/
+
+# Agent-generated files (keep stubs, ignore runtime files)
+ctxvault/.agent-notes/*.md
+!ctxvault/.agent-notes/STATE.md
+!ctxvault/.agent-notes/SESSION_REPORT.md

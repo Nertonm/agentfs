@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agentfs"
+version = "0.1.0"
+description = "Local-first AI agent with persistent external memory"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+semantic = [
+    "sentence-transformers>=2.2",
+    "numpy>=1.24",
+]
+dev = [
+    "pytest>=7",
+]
+
+[project.scripts]
+agentfs = "ctxvault.agent:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["ctxvault*"]
