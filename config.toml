@@ -1,0 +1,26 @@
+[workspace]
+path = "."
+
+[llama]
+url = "http://localhost:8080/v1"
+context_tokens = 4096
+temperature = 0.7
+max_tokens = 800
+model = "local"
+
+[agent]
+lru_slots = 8
+soft_limit = 0.70
+hard_limit = 0.85
+
+[retriever]
+rrf_k = 60
+top_k = 10
+graph_min_nodes = 5
+
+[indexer]
+chunk_max_lines = 80
+chunk_overlap_lines = 5
+watch_debounce = 1.5
+use_sentence_transformers = true
+embedding_model = "all-MiniLM-L6-v2"

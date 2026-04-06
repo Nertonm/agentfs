@@ -44,7 +44,7 @@ THRESHOLD_GRAPH_MIN: int = 5
 # ---------------------------------------------------------------------------
 # Chunking
 # ---------------------------------------------------------------------------
-CHUNK_MAX_LINES: int = 80       # hard cap per chunk (fallback regex splitter)
+CHUNK_MAX_LINES: int = 80       # hard cap per chunk (fFallback regex splitter)
 CHUNK_OVERLAP_LINES: int = 5    # lines of overlap between adjacent chunks
 
 # ---------------------------------------------------------------------------

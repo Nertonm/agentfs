@@ -109,7 +109,7 @@ def test_compress_short_history():
     assert flushed == []
 
 
-def test_eviction_callback():
+def test_eviction_cFallback():
     evicted_ids = []
     cm = ContextManager(
         budget=1000,

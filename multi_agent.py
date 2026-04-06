@@ -1,5 +1,5 @@
 """
-multi_agent.py — Planner / Executor split for agentfs.
+multi_agent.py - Planner / Executor split for agentfs.
 
 Architecture
 ------------
@@ -24,8 +24,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from ctxvault.agent_notebook import AgentNotebook
-from ctxvault.config import (
+from agent_notebook import AgentNotebook
+from config import (
     CONTEXT_BUDGET,
     HISTORY_TOKENS_PER_STEP,
     LLAMA_COMPLETIONS_PATH,
@@ -37,8 +37,8 @@ from ctxvault.config import (
     TOOLS_TOKENS,
     VAULT_MAP_TOKENS,
 )
-from ctxvault.context_manager import ContextManager
-from ctxvault.tools import ToolSet
+from context_manager import ContextManager
+from tools import ToolSet
 
 
 # ---------------------------------------------------------------------------
@@ -62,9 +62,9 @@ class PlanStep:
 _PLANNER_SYSTEM = """You are a task planner for an AI coding agent.
 
 Given a task, produce a JSON plan with steps. Each step has:
-- description: str  — what to do
-- tool_subset: list[str]  — which tools to use (from the available set)
-- expected_output: str  — what you expect to learn/produce
+- description: str  - what to do
+- tool_subset: list[str]  - which tools to use (from the available set)
+- expected_output: str  - what you expect to learn/produce
 
 Available tools:
 list_dir, search_text, read_file, read_symbols, write_file, append_file,
@@ -146,7 +146,7 @@ class Planner:
                 return steps
             except (json.JSONDecodeError, KeyError):
                 pass
-        # FFallback: single step
+        # Fallback: single step
         return [PlanStep(index=0, description=raw or "Execute task", tool_subset=[])]
 
 
@@ -309,7 +309,7 @@ class Executor:
 
 
 # ---------------------------------------------------------------------------
-# MultiAgent — orchestrates Planner + Executor
+# MultiAgent - orchestrates Planner + Executor
 # ---------------------------------------------------------------------------
 
 class MultiAgent:
@@ -389,11 +389,11 @@ class MultiAgent:
         vault_root = Path(vault_root).resolve()
         _db = db_path or str(vault_root / "index.sqlite")
 
-        from ctxvault.retriever import Retriever
-        from ctxvault.vault_indexer import VaultIndexer
+        from retriever import Retriever
+        from vault_indexer import VaultIndexer
 
         indexer = VaultIndexer(vault_root, db_path=_db)
-        indexer.index_all()
+        indexer.scan()
 
         retriever = Retriever(db_path=_db)
         cm = ContextManager(budget=CONTEXT_BUDGET)

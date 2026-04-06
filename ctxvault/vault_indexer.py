@@ -4,7 +4,7 @@ vault_indexer.py — file scanner, chunker, and SQLite indexer.
 Responsibilities
 ----------------
 * Walk the vault directory and detect changed / new files.
-* Split files into chunks by function/class boundaries (regex fallback;
+* Split files into chunks by function/class boundaries (regex fFallback;
   tree-sitter upgrade path).
 * Persist chunks, backlinks (wikilinks ``[[target]]``), and FTS5 index to
   ``index.sqlite``.
@@ -437,7 +437,7 @@ class VaultIndexer:
 # ---------------------------------------------------------------------------
 
 class VaultWatcher:
-    """Poll-based watcher with debounce. Calls ``callback(path)`` on change."""
+    """Poll-based watcher with debounce. Calls ``cFallback(path)`` on change."""
 
     def __init__(
         self,

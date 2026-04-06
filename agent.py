@@ -1,5 +1,5 @@
 """
-agent.py — Main agent loop implementing ReAct (Reason → JSON tool call).
+agent.py - Main agent loop implementing ReAct (Reason → JSON tool call).
 
 Architecture
 ------------
@@ -32,11 +32,12 @@ import re
 import time
 import urllib.request
 import urllib.error
+import atexit
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from ctxvault.agent_notebook import AgentNotebook
-from ctxvault.config import (
+from agent_notebook import AgentNotebook
+from config import (
     CONTEXT_BUDGET,
     LLAMA_COMPLETIONS_PATH,
     LLAMA_MAX_TOKENS,
@@ -49,8 +50,8 @@ from ctxvault.config import (
     TOOLS_TOKENS,
     VAULT_MAP_TOKENS,
 )
-from ctxvault.context_manager import ContextManager
-from ctxvault.tools import ToolSet
+from context_manager import ContextManager
+from tools import ToolSet
 
 # Regex to extract JSON tool call from model output
 _JSON_BLOCK_RE = re.compile(
@@ -61,16 +62,16 @@ _JSON_BLOCK_RE = re.compile(
 _TOOL_DESCRIPTIONS = """
 Available tools (call exactly one per turn as JSON inside ```json ... ```):
 
-list_dir(path, depth, filters)          — list directory tree
-search_text(query, paths, regex)        — grep files
-read_file(path, start_line, end_line)   — read file (paginated)
-read_symbols(path)                      — list functions/classes
-write_file(path, content)               — write file
-append_file(path, content)              — append to file
-summarize_to_cache(item_id)             — summarise file into cache
-retrieve_candidates(query, k, filters)  — hybrid BM25+semantic+graph search
-pin(item_id) / unpin(item_id)           — pin/unpin cache item
-run_command(cmd)                        — run shell command (if enabled)
+list_dir(path, depth, filters)          - list directory tree
+search_text(query, paths, regex)        - grep files
+read_file(path, start_line, end_line)   - read file (paginated)
+read_symbols(path)                      - list functions/classes
+write_file(path, content)               - write file
+append_file(path, content)              - append to file
+summarize_to_cache(item_id)             - summarise file into cache
+retrieve_candidates(query, k, filters)  - hybrid BM25+semantic+graph search
+pin(item_id) / unpin(item_id)           - pin/unpin cache item
+run_command(cmd)                        - run shell command (if enabled)
 """.strip()
 
 
@@ -81,7 +82,7 @@ def _build_system_prompt(vault_map: str, state: str) -> str:
         f"## STATE\n{state}\n\n"
         f"## Tools\n{_TOOL_DESCRIPTIONS}\n\n"
         "Reason step by step, then emit exactly one JSON tool call per turn.\n"
-        "Format: ```json\\n{\"tool\": \"...\", \"args\": {...}}\\n```"
+        "ormat: ```json\\n{\"tool\": \"...\", \"args\": {...}}\\n```"
     )
 
 
@@ -93,7 +94,7 @@ def _extract_tool_call(text: str) -> Optional[Dict[str, Any]]:
             return json.loads(m.group(1))
         except json.JSONDecodeError:
             pass
-    # Find any JSON object containing "tool" key by scanning for balanced braces
+    # ind any JSON object containing "tool" key by scanning for balanced braces
     for start in range(len(text)):
         if text[start] != "{":
             continue
@@ -132,7 +133,7 @@ class Agent:
     context_manager : ContextManager
         Tracks token budget.
     notebook : AgentNotebook
-        For session notes and STATE.md.
+        or session notes and STATE.md.
     graph_active : bool
         Whether the graph retrieval is currently active.
     """
@@ -155,7 +156,11 @@ class Agent:
         self._max_steps = max_steps
         self._history: List[Dict[str, str]] = []  # {role, content}
         self._step_count = 0
+        atexit.register(self._shutdown)
 
+    def _shutdown(self):
+        print("\nSaving SESSION_REPORT.md...")
+        self._nb.write_session_report(step_count=self._step_count)
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -172,7 +177,7 @@ class Agent:
         for _step in range(self._max_steps):
             self._step_count += 1
             result = self._step(task)
-            if result.startswith("DONE:") or result.startswith("FINAL:"):
+            if result.startswith("DONE:") or result.startswith("INAL:"):
                 break
             # Check memory pressure
             evicted = self._cm.maybe_evict()
@@ -186,12 +191,11 @@ class Agent:
                         f"[{m['role']}]: {m['content'][:80]}" for m in flushed
                     )
                     self._nb.append_note(
-                        f"## Flushed history ({len(flushed)} msgs)\n{flush_text}\n",
+                        f"## lushed history ({len(flushed)} msgs)\n{flush_text}\n",
                         slug="history-flush",
                     )
                     self._history = kept
 
-        self._nb.write_session_report(step_count=self._step_count)
         return result
 
     def _step(self, task: str) -> str:
@@ -220,14 +224,15 @@ class Agent:
         # Parse tool call
         tool_call = _extract_tool_call(model_output)
         if tool_call is None:
-            # No tool call — treat as final answer
+            # No tool call - treat as final answer
             self._history.append({"role": "assistant", "content": model_output})
-            return f"FINAL: {model_output}"
+            return f"INAL: {model_output}"
 
         tool_name = tool_call.get("tool", "")
         tool_args = tool_call.get("args", {})
 
         # Execute tool
+        self._tools.current_step = self._step_count
         tool_result = self._tools.dispatch(tool_name, tool_args)
         result_text = tool_result.get("output", str(tool_result))
 
@@ -258,7 +263,7 @@ class Agent:
         messages: List[Dict[str, str]],
         user_msg: str,
     ) -> str:
-        """Call llama.cpp-compatible server. FFallback: stub."""
+        """Call llama.cpp-compatible server. Fallback: stub."""
         prompt = self._build_prompt(system_prompt, messages, user_msg)
         url = LLAMA_SERVER_URL.rstrip("/") + LLAMA_COMPLETIONS_PATH
         payload = json.dumps(
@@ -280,7 +285,7 @@ class Agent:
                 body = json.loads(resp.read().decode("utf-8"))
                 return body.get("content", body.get("text", ""))
         except (urllib.error.URLError, OSError):
-            # Server not available — return a stub "no-op" response
+            # Server not available - return a stub "no-op" response
             return (
                 "I was unable to reach the LLM server. "
                 "Please start llama.cpp server and retry.\n"
@@ -317,7 +322,7 @@ class Agent:
 
 
 # ---------------------------------------------------------------------------
-# Factory / entry point
+# actory / entry point
 # ---------------------------------------------------------------------------
 
 def create_agent(
@@ -328,15 +333,15 @@ def create_agent(
     max_steps: int = 50,
 ) -> Agent:
     """Create a fully wired agent for the given vault root."""
-    from ctxvault.config import DB_PATH
-    from ctxvault.retriever import Retriever
-    from ctxvault.vault_indexer import VaultIndexer
+    from config import DB_PATH
+    from retriever import Retriever
+    from vault_indexer import VaultIndexer
 
     vault_root = Path(vault_root).resolve()
     _db = db_path or str(vault_root / "index.sqlite")
 
     indexer = VaultIndexer(vault_root, db_path=_db)
-    indexer.index_all()
+    indexer.scan()
 
     retriever = Retriever(db_path=_db)
     cm = ContextManager(budget=CONTEXT_BUDGET)

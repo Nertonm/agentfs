@@ -1,13 +1,10 @@
 """
-context_manager.py — token budget tracking, memory pressure zones, and eviction.
+context_manager.py - token budget tracking, memory pressure zones, and eviction.
 
 Three zones (fraction of CONTEXT_BUDGET):
   Normal   (< 70%): no action
   Advisory (70–85%): evict low-priority LRU chunks from cache
   Critical (> 85%): compress oldest history half + flush summary to notebook
-
-The context manager does NOT store actual LLM tokens — it tracks an
-approximation (1 token ≈ 4 chars, or pass explicit token counts).
 """
 
 from __future__ import annotations
@@ -16,7 +13,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional, Tuple
 
-from ctxvault.config import (
+from config import (
     CACHE_MAX_ITEMS,
     CONTEXT_BUDGET,
     ZONE_ADVISORY_THRESHOLD,
@@ -25,11 +22,9 @@ from ctxvault.config import (
 
 Zone = str  # "normal" | "advisory" | "critical"
 
-
 def _approx_tokens(text: str) -> int:
     """Rough token approximation: 1 token ≈ 4 characters."""
     return max(1, len(text) // 4)
-
 
 @dataclass
 class CacheItem:
@@ -43,32 +38,21 @@ class CacheItem:
     def touch(self) -> None:
         self.last_access = time.time()
 
-
 class ContextManager:
     """
     Manages token budget and eviction across three memory-pressure zones.
-
-    Usage::
-
-        cm = ContextManager()
-        cm.add("file:foo.py:0", content, importance=0.8)
-        zone = cm.zone()                 # "normal" / "advisory" / "critical"
-        evicted = cm.maybe_evict()       # list of evicted item IDs
-        status = cm.status_line()        # "[CTX: 68% | ZONE: normal | ...]"
     """
 
     def __init__(
         self,
-        budget: int = CONTEXT_BUDGET,
-        *,
-        on_evict: Optional[Callable[[str, str], None]] = None,
+        notebook,
+        budget: int = getattr(CONTEXT_BUDGET, "real", 4096),
     ) -> None:
         self._budget = budget
+        self.nb = notebook
         self._cache: Dict[str, CacheItem] = {}
         self._used_tokens: int = 0
-        self._on_evict = on_evict  # cFallback(item_id, reason)
-        # Observability
-        self.eviction_log: List[Tuple[float, str, str]] = []  # (ts, id, reason)
+        self.eviction_log: List[Tuple[float, str, str]] = []
 
     # ------------------------------------------------------------------
     # Public API
@@ -106,7 +90,6 @@ class ContextManager:
         tokens: Optional[int] = None,
         pinned: bool = False,
     ) -> bool:
-        """Add or update an item. Returns True if added without eviction."""
         tc = tokens if tokens is not None else _approx_tokens(content)
         if item_id in self._cache:
             old = self._cache[item_id]
@@ -130,7 +113,6 @@ class ContextManager:
         return True
 
     def remove(self, item_id: str) -> Optional[str]:
-        """Remove an item by ID. Returns its content or None."""
         item = self._cache.pop(item_id, None)
         if item:
             self._used_tokens -= item.token_count
@@ -150,35 +132,21 @@ class ContextManager:
             self._cache[item_id].touch()
 
     def maybe_evict(self) -> List[str]:
-        """Run eviction according to current zone. Returns evicted IDs."""
         zone = self.zone()
         evicted: List[str] = []
         if zone == "normal":
             return evicted
 
         candidates = self._eviction_candidates()
-        if zone == "advisory":
-            # Evict until we drop below advisory threshold
+        if zone in ("advisory", "critical"):
             for item in candidates:
-                if self.fraction_used() < ZONE_ADVISORY_THRESHOLD:
+                if self.fraction_used() < ZONE_ADVISORY_THRESHOLD and len(self._cache) <= CACHE_MAX_ITEMS:
                     break
-                self._evict(item.item_id, "advisory_lru")
-                evicted.append(item.item_id)
-        elif zone == "critical":
-            # Evict aggressively until below critical threshold
-            for item in candidates:
-                if self.fraction_used() < ZONE_ADVISORY_THRESHOLD:
-                    break
-                self._evict(item.item_id, "critical_pressure")
+                self._evict(item.item_id, f"{zone}_pressure")
                 evicted.append(item.item_id)
         return evicted
 
     def compress_history(self, history: List[dict]) -> Tuple[List[dict], List[dict]]:
-        """
-        Compress oldest half of history.
-
-        Returns (kept, flushed) where ``flushed`` should be written to notebook.
-        """
         if len(history) <= 2:
             return history, []
         mid = len(history) // 2
@@ -197,7 +165,7 @@ class ContextManager:
         graph_str = "active" if graph_active else "cold"
         return (
             f"[CTX: {pct}% | ZONE: {zone} | "
-            f"GRAPH: {graph_str} | STEPS: {step_count}]"
+            f"GRAPH: {graph_str} | LRU: {len(self._cache)}/{CACHE_MAX_ITEMS} | STEPS: {step_count}]"
         )
 
     def get(self, item_id: str) -> Optional[str]:
@@ -215,7 +183,6 @@ class ContextManager:
     # ------------------------------------------------------------------
 
     def _eviction_candidates(self) -> List[CacheItem]:
-        """Return non-pinned items sorted by (importance asc, last_access asc)."""
         items = [i for i in self._cache.values() if not i.pinned]
         items.sort(key=lambda x: (x.importance, x.last_access))
         return items
@@ -226,5 +193,5 @@ class ContextManager:
             self._used_tokens -= item.token_count
             ts = time.time()
             self.eviction_log.append((ts, item_id, reason))
-            if self._on_evict:
-                self._on_evict(item_id, reason)
+            # Hook eviction into notebook writing!
+            self.nb.log_eviction(item_id, reason, f"```\n{item.content[:200]}...\n```")

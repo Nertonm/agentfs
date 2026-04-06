@@ -69,8 +69,8 @@ def indexed_vault(tmp_path):
         encoding="utf-8",
     )
     db_path = tmp_path / "test.sqlite"
-    indexer = VaultIndexer(tmp_path, db_path=db_path)
-    indexer.index_all()
+    indexer = VaultIndexer(tmp_path, db_path=db_path, load_st_model=False)
+    indexer.scan(verbose=False)
     return indexer, tmp_path, db_path
 
 
@@ -126,9 +126,8 @@ def test_vault_map_generated(indexed_vault):
 
 def test_no_reindex_unchanged(indexed_vault):
     indexer, tmp_path, db_path = indexed_vault
-    # Second call — nothing changed
-    count = indexer.index_all()
-    assert count == 0
+    count = indexer.scan(verbose=False)
+    assert count["added"] == 0 and count["updated"] == 0
     indexer.close()
 
 
@@ -138,8 +137,8 @@ def test_reindex_on_change(indexed_vault):
     (tmp_path / "file_a.py").write_text(
         "def hello():\n    return 'changed'\n", encoding="utf-8"
     )
-    count = indexer.index_all()
-    assert count >= 1
+    count = indexer.scan(verbose=False)
+    assert count["updated"] >= 1
     indexer.close()
 
 
